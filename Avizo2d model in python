@@ -1,0 +1,287 @@
+import numpy as np
+import tensorflow as tf
+import random
+import os
+
+# Set a seed
+seed_value = 12
+random.seed(seed_value)
+np.random.seed(seed_value)
+tf.random.set_seed(seed_value)
+os.environ['PYTHONHASHSEED'] = str(seed_value)
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+# Load the modules
+from keras.models import Model
+from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, concatenate, BatchNormalization, ZeroPadding2D, Activation, Add, Concatenate
+from keras.optimizers import Adam
+from keras.metrics import MeanIoU
+
+IMG_CHANNEL = 1
+
+def unet_model(input_size=(None, None, IMG_CHANNEL)):
+    data = Input(input_size)
+    
+    bn_data = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=False, name='bn_data')(data)
+    
+    zero_padding2d = ZeroPadding2D(padding=[[3, 3], [3, 3]], data_format='channels_last', name='zero_padding2d')(bn_data)
+    
+    conv0 = Conv2D(filters=64, kernel_size=[7, 7], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='conv0')(zero_padding2d)
+
+    bn0 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='bn0')(conv0)
+
+    relu0 = Activation(activation='relu', name='relu0')(bn0)
+
+    zero_padding2d_1 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_1')(relu0)
+    
+    pooling0 = MaxPooling2D(pool_size=[3, 3], padding='valid', strides=[2, 2], data_format='channels_last', name='pooling0')(zero_padding2d_1)
+
+    stage1_unit1_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage1_unit1_bn1')(pooling0)
+    
+    stage1_unit1_relu1 = Activation(activation='relu', name='stage1_unit1_relu1')(stage1_unit1_bn1)
+    
+    zero_padding2d_2 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_2')(stage1_unit1_relu1)
+
+    stage1_unit1_conv1 = Conv2D(filters=64, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage1_unit1_conv1')(zero_padding2d_2)
+
+    stage1_unit1_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage1_unit1_bn2')(stage1_unit1_conv1)
+
+    stage1_unit1_relu2 = Activation(activation='relu', name='stage1_unit1_relu2')(stage1_unit1_bn2)
+
+    zero_padding2d_3 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_3')(stage1_unit1_relu2)
+
+    stage1_unit1_conv2 = Conv2D(filters=64, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage1_unit1_conv2')(zero_padding2d_3)
+
+    stage1_unit1_sc = Conv2D(filters=64, kernel_size=[1, 1], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage1_unit1_sc')(stage1_unit1_relu1)
+
+    add = Add(name='add')([stage1_unit1_conv2, stage1_unit1_sc])
+    
+    stage1_unit2_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage1_unit2_bn1')(add)
+
+    stage1_unit2_relu1 = Activation(activation='relu', name='stage1_unit2_relu1')(stage1_unit2_bn1)
+
+    zero_padding2d_4 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_4')(stage1_unit2_relu1)
+
+    stage1_unit2_conv1 = Conv2D(filters=64, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage1_unit2_conv1')(zero_padding2d_4)
+
+    stage1_unit2_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage1_unit2_bn2')(stage1_unit2_conv1)
+    
+    stage1_unit2_relu2 = Activation(activation='relu', name='stage1_unit2_relu2')(stage1_unit2_bn2)
+    
+    zero_padding2d_5 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_5')(stage1_unit2_relu2)
+    
+    stage1_unit2_conv2 = Conv2D(filters=64, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage1_unit2_conv2')(zero_padding2d_5)
+    
+    add_1 = Add(name='add_1')([stage1_unit2_conv2, add])
+    
+    stage2_unit1_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage2_unit1_bn1')(add_1)
+    
+    stage2_unit1_relu1 = Activation(activation='relu', name='stage2_unit1_relu1')(stage2_unit1_bn1)
+    
+    zero_padding2d_6 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_6')(stage2_unit1_relu1)
+    
+    stage2_unit1_conv1 = Conv2D(filters=128, kernel_size=[3, 3], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage2_unit1_conv1')(zero_padding2d_6)
+    
+    stage2_unit1_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage2_unit1_bn2')(stage2_unit1_conv1)
+    
+    stage2_unit1_relu2 = Activation(activation='relu', name='stage2_unit1_relu2')(stage2_unit1_bn2)
+    
+    zero_padding2d_7 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_7')(stage2_unit1_relu2)
+    
+    stage2_unit1_conv2 = Conv2D(filters=128, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage2_unit1_conv2')(zero_padding2d_7)
+    
+    stage2_unit1_sc = Conv2D(filters=128, kernel_size=[1, 1], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage2_unit1_sc')(stage2_unit1_relu1)
+    
+    add_2 = Add(name='add_2')([stage2_unit1_conv2, stage2_unit1_sc])
+    
+    stage2_unit2_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage2_unit2_bn1')(add_2)
+    
+    stage2_unit2_relu1 = Activation(activation='relu', name='stage2_unit2_relu1')(stage2_unit2_bn1)
+    
+    zero_padding2d_8 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_8')(stage2_unit2_relu1)
+    
+    stage2_unit2_conv1 = Conv2D(filters=128, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage2_unit2_conv1')(zero_padding2d_8)
+    
+    stage2_unit2_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage2_unit2_bn2')(stage2_unit2_conv1)
+    
+    stage2_unit2_relu2 = Activation(activation='relu', name='stage2_unit2_relu2')(stage2_unit2_bn2)
+    
+    zero_padding2d_9 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_9')(stage2_unit2_relu2)
+    
+    stage2_unit2_conv2 = Conv2D(filters=128, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage2_unit2_conv2')(zero_padding2d_9)
+    
+    add_3 = Add(name='add_3')([stage2_unit2_conv2, add_2])
+    
+    stage3_unit1_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage3_unit1_bn1')(add_3)
+    
+    stage3_unit1_relu1 = Activation(activation='relu', name='stage3_unit1_relu1')(stage3_unit1_bn1)
+    
+    zero_padding2d_10 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_10')(stage3_unit1_relu1)
+    
+    stage3_unit1_conv1 = Conv2D(filters=256, kernel_size=[3, 3], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage3_unit1_conv1')(zero_padding2d_10)
+    
+    stage3_unit1_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage3_unit1_bn2')(stage3_unit1_conv1)
+    
+    stage3_unit1_relu2 = Activation(activation='relu', name='stage3_unit1_relu2')(stage3_unit1_bn2)
+    
+    zero_padding2d_11 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_11')(stage3_unit1_relu2)
+    
+    stage3_unit1_conv2 = Conv2D(filters=256, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage3_unit1_conv2')(zero_padding2d_11)
+    
+    stage3_unit1_sc = Conv2D(filters=256, kernel_size=[1, 1], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage3_unit1_sc')(stage3_unit1_relu1)
+    
+    add_4 = Add(name='add_4')([stage3_unit1_conv2, stage3_unit1_sc])
+    
+    stage3_unit2_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage3_unit2_bn1')(add_4)
+    
+    stage3_unit2_relu1 = Activation(activation='relu', name='stage3_unit2_relu1')(stage3_unit2_bn1)
+    
+    zero_padding2d_12 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_12')(stage3_unit2_relu1)
+    
+    stage3_unit2_conv1 = Conv2D(filters=256, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage3_unit2_conv1')(zero_padding2d_12)
+    
+    stage3_unit2_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage3_unit2_bn2')(stage3_unit2_conv1)
+    
+    stage3_unit2_relu2 = Activation(activation='relu', name='stage3_unit2_relu2')(stage3_unit2_bn2)
+    
+    zero_padding2d_13 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_13')(stage3_unit2_relu2)
+    
+    stage3_unit2_conv2 = Conv2D(filters=256, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage3_unit2_conv2')(zero_padding2d_13)
+    
+    add_5 = Add(name='add_5')([stage3_unit2_conv2, add_4])
+    
+    stage4_unit1_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage4_unit1_bn1')(add_5)
+    
+    stage4_unit1_relu1 = Activation(activation='relu', name='stage4_unit1_relu1')(stage4_unit1_bn1)
+    
+    zero_padding2d_14 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_14')(stage4_unit1_relu1)
+    
+    stage4_unit1_conv1 = Conv2D(filters=512, kernel_size=[3, 3], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage4_unit1_conv1')(zero_padding2d_14)
+    
+    stage4_unit1_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage4_unit1_bn2')(stage4_unit1_conv1)
+    
+    stage4_unit1_relu2 = Activation(activation='relu', name='stage4_unit1_relu2')(stage4_unit1_bn2)
+    
+    zero_padding2d_15 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_15')(stage4_unit1_relu2)
+    
+    stage4_unit1_conv2 = Conv2D(filters=512, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage4_unit1_conv2')(zero_padding2d_15)
+    
+    stage4_unit1_sc = Conv2D(filters=512, kernel_size=[1, 1], strides=[2, 2], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage4_unit1_sc')(stage4_unit1_relu1)
+    
+    add_6 = Add(name='add_6')([stage4_unit1_conv2, stage4_unit1_sc])
+    
+    stage4_unit2_bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage4_unit2_bn1')(add_6)
+    
+    stage4_unit2_relu1 = Activation(activation='relu', name='stage4_unit2_relu1')(stage4_unit2_bn1)
+    
+    zero_padding2d_16 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_16')(stage4_unit2_relu1)
+    
+    stage4_unit2_conv1 = Conv2D(filters=512, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage4_unit2_conv1')(zero_padding2d_16)
+    
+    stage4_unit2_bn2 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='stage4_unit2_bn2')(stage4_unit2_conv1)
+    
+    stage4_unit2_relu2 = Activation(activation='relu', name='stage4_unit2_relu2')(stage4_unit2_bn2)
+    
+    zero_padding2d_17 = ZeroPadding2D(padding=[[1, 1], [1, 1]], data_format='channels_last', name='zero_padding2d_17')(stage4_unit2_relu2)
+    
+    stage4_unit2_conv2 = Conv2D(filters=512, kernel_size=[3, 3], strides=[1, 1], padding='valid', data_format='channels_last', activation='linear', use_bias=False, name='stage4_unit2_conv2')(zero_padding2d_17)
+    
+    add_7 = Add(name='add_7')([stage4_unit2_conv2, add_6])
+    
+    bn1 = BatchNormalization(axis=3, momentum=0.99, epsilon=2e-05, center=True, scale=True, name='bn1')(add_7)
+    
+    relu1 = Activation(activation='relu', name='relu1')(bn1)
+    
+    decoder_stage0_upsampling = UpSampling2D(size=[2, 2], data_format='channels_last', interpolation='nearest', name='decoder_stage0_upsampling')(relu1)
+    
+    decoder_stage0_concat = Concatenate(axis=3, name='decoder_stage0_concat')([decoder_stage0_upsampling, stage4_unit1_relu1])
+    
+    decoder_stage0a_conv = Conv2D(filters=256, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage0a_conv')(decoder_stage0_concat)
+    
+    decoder_stage0a_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage0a_bn')(decoder_stage0a_conv)
+    
+    decoder_stage0a_relu = Activation(activation='relu', name='decoder_stage0a_relu')(decoder_stage0a_bn)
+    
+    decoder_stage0b_conv = Conv2D(filters=256, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage0b_conv')(decoder_stage0a_relu)
+    
+    decoder_stage0b_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage0b_bn')(decoder_stage0b_conv)
+    
+    decoder_stage0b_relu = Activation(activation='relu', name='decoder_stage0b_relu')(decoder_stage0b_bn)
+    
+    decoder_stage1_upsampling = UpSampling2D(size=[2, 2], data_format='channels_last', interpolation='nearest', name='decoder_stage1_upsampling')(decoder_stage0b_relu)
+    
+    decoder_stage1_concat = Concatenate(axis=3, name='decoder_stage1_concat')([decoder_stage1_upsampling, stage3_unit1_relu1])
+    
+    decoder_stage1a_conv = Conv2D(filters=128, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage1a_conv')(decoder_stage1_concat)
+    
+    decoder_stage1a_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage1a_bn')(decoder_stage1a_conv)
+    
+    decoder_stage1a_relu = Activation(activation='relu', name='decoder_stage1a_relu')(decoder_stage1a_bn)
+    
+    decoder_stage1b_conv = Conv2D(filters=128, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage1b_conv')(decoder_stage1a_relu)
+    
+    decoder_stage1b_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage1b_bn')(decoder_stage1b_conv)
+    
+    decoder_stage1b_relu = Activation(activation='relu', name='decoder_stage1b_relu')(decoder_stage1b_bn)
+    
+    decoder_stage2_upsampling = UpSampling2D(size=[2, 2], data_format='channels_last', interpolation='nearest', name='decoder_stage2_upsampling')(decoder_stage1b_relu)
+    
+    decoder_stage2_concat = Concatenate(axis=3, name='decoder_stage2_concat')([decoder_stage2_upsampling, stage2_unit1_relu1])
+    
+    decoder_stage2a_conv = Conv2D(filters=64, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage2a_conv')(decoder_stage2_concat)
+    
+    decoder_stage2a_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage2a_bn')(decoder_stage2a_conv)
+    
+    decoder_stage2a_relu = Activation(activation='relu', name='decoder_stage2a_relu')(decoder_stage2a_bn)
+    
+    decoder_stage2b_conv = Conv2D(filters=64, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage2b_conv')(decoder_stage2a_relu)
+    
+    decoder_stage2b_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage2b_bn')(decoder_stage2b_conv)
+    
+    decoder_stage2b_relu = Activation(activation='relu', name='decoder_stage2b_relu')(decoder_stage2b_bn)
+    
+    decoder_stage3_upsampling = UpSampling2D(size=[2, 2], data_format='channels_last', interpolation='nearest', name='decoder_stage3_upsampling')(decoder_stage2b_relu)
+    
+    decoder_stage3_concat = Concatenate(axis=3, name='decoder_stage3_concat')([decoder_stage3_upsampling, relu0])
+    
+    decoder_stage3a_conv = Conv2D(filters=32, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage3a_conv')(decoder_stage3_concat)
+    
+    decoder_stage3a_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage3a_bn')(decoder_stage3a_conv)
+    
+    decoder_stage3a_relu = Activation(activation='relu', name='decoder_stage3a_relu')(decoder_stage3a_bn)
+    
+    decoder_stage3b_conv = Conv2D(filters=32, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage3b_conv')(decoder_stage3a_relu)
+    
+    decoder_stage3b_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage3b_bn')(decoder_stage3b_conv)
+    
+    decoder_stage3b_relu = Activation(activation='relu', name='decoder_stage3b_relu')(decoder_stage3b_bn)
+    
+    decoder_stage4_upsampling = UpSampling2D(size=[2, 2], data_format='channels_last', interpolation='nearest', name='decoder_stage4_upsampling')(decoder_stage3b_relu)
+    
+    decoder_stage4a_conv = Conv2D(filters=16, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage4a_conv')(decoder_stage4_upsampling)
+    
+    decoder_stage4a_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage4a_bn')(decoder_stage4a_conv)
+    
+    decoder_stage4a_relu = Activation(activation='relu', name='decoder_stage4a_relu')(decoder_stage4a_bn)
+    
+    decoder_stage4b_conv = Conv2D(filters=16, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=False, name='decoder_stage4b_conv')(decoder_stage4a_relu)
+    
+    decoder_stage4b_bn = BatchNormalization(axis=3, momentum=0.99, epsilon=0.001, center=True, scale=True, name='decoder_stage4b_bn')(decoder_stage4b_conv)
+    
+    decoder_stage4b_relu = Activation(activation='relu', name='decoder_stage4b_relu')(decoder_stage4b_bn)
+    
+    final_conv = Conv2D(filters=1, kernel_size=[3, 3], strides=[1, 1], padding='same', data_format='channels_last', activation='linear', use_bias=True, name='final_conv')(decoder_stage4b_relu)
+    
+    # Output layer
+    sigmoid = Activation(activation='sigmoid', name='sigmoid')(final_conv)
+    
+    model = Model(inputs=data, outputs=sigmoid)
+    
+    # With a specified learning rate
+    model.compile(optimizer=Adam(learning_rate = 2e-3), 
+              loss='binary_crossentropy', 
+              metrics=[MeanIoU(num_classes=2)],
+              weighted_metrics=[])
+    
+    model.summary()
+    return model
