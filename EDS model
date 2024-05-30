@@ -1,0 +1,338 @@
+
+import numpy as np
+import tensorflow as tf
+import random
+import os
+
+# Setting the seed
+seed_value = 12
+random.seed(seed_value)
+np.random.seed(seed_value)
+tf.random.set_seed(seed_value)
+os.environ['PYTHONHASHSEED'] = str(seed_value)
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+# Loading the modules
+from keras.models import Model
+from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, concatenate
+from keras.optimizers import Adam
+from keras.metrics import MeanIoU
+
+IMG_CHANNEL = 4
+
+def unet_model(input_size=(None, None, IMG_CHANNEL)):
+    inputs = Input(input_size)
+    
+    #Contraction path
+    c1 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
+    c1 = Dropout(0.1)(c1)
+    c1 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
+    p1 = MaxPooling2D((2, 2))(c1)
+    
+    c2 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p1)
+    c2 = Dropout(0.1)(c2)
+    c2 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c2)
+    p2 = MaxPooling2D((2, 2))(c2)
+     
+    c3 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p2)
+    c3 = Dropout(0.2)(c3)
+    c3 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c3)
+    p3 = MaxPooling2D((2, 2))(c3)
+     
+    c4 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p3)
+    c4 = Dropout(0.2)(c4)
+    c4 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c4)
+    p4 = MaxPooling2D(pool_size=(2, 2))(c4)
+     
+    c5 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p4)
+    c5 = Dropout(0.3)(c5)
+    c5 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c5)
+    
+    #Expansive path 
+    u6 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(c5)
+    u6 = concatenate([u6, c4])
+    c6 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u6)
+    c6 = Dropout(0.2)(c6)
+    c6 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c6)
+     
+    u7 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(c6)
+    u7 = concatenate([u7, c3])
+    c7 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u7)
+    c7 = Dropout(0.2)(c7)
+    c7 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c7)
+     
+    u8 = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(c7)
+    u8 = concatenate([u8, c2])
+    c8 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u8)
+    c8 = Dropout(0.1)(c8)
+    c8 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c8)
+     
+    u9 = Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same')(c8)
+    u9 = concatenate([u9, c1], axis=3)
+    c9 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u9)
+    c9 = Dropout(0.1)(c9)
+    c9 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c9)
+
+    # Output layer
+    output = Conv2D(1, 1, activation='sigmoid')(conv5)
+    
+    model = Model(inputs=inputs, outputs=output)
+    
+    # model.compile(loss='binary_crossentropy', 
+    #           metrics=["acc"],
+    #           weighted_metrics=[])
+    
+    # With a specified learning rate
+    model.compile(optimizer=Adam(learning_rate = 2e-3), 
+              loss='binary_crossentropy', 
+              metrics=[MeanIoU(num_classes=2)],
+              weighted_metrics=[])
+    
+    model.summary()
+    return model
+
+
+# Load the weights (unhastag if want to load weights / train on a pretrained model)
+# model.load_weights(r'C:\Users\LabMan\Desktop\EDS AI\model_weights.h5')
+
+# load checkpoint
+# model.load_weights(checkpoint_path)
+
+
+input_size = (None, None, IMG_CHANNEL)
+model = unet_model(input_size)
+
+
+
+#%%
+
+import os
+import pandas as pd
+import numpy as np
+from PIL import Image
+
+#  the directories where subdirectories are stored
+main_directories = [r"C:\Users\LabMan\Desktop\EDS elements\C40", r"C:\Users\LabMan\Desktop\EDS elements\A126"]
+
+# Subdirectories
+subdirs = ['EDS Fe L_alpha_1,2 Map', 'Electron Image SE', 'EDS Mg K_alpha_1,2 Map', 'EDS Si K_alpha_1 Map']
+
+
+all_images = []
+
+# Loop over the main directories
+for main_directory in main_directories:
+    num_files = len(os.listdir(os.path.join(main_directory, subdirs[0])))
+    for i in range(num_files):
+        image_channels = []
+
+        # Loop over the subdirectories
+        for subdir in subdirs:
+            files = os.listdir(os.path.join(main_directory, subdir))
+            files.sort()
+            filename = files[i]
+
+            # Check if the file is a CSV or a TIF file
+            if filename.endswith('.csv'):
+                data = pd.read_csv(os.path.join(main_directory, subdir, filename), header=None)
+                data = data.dropna(axis=1)
+                img = data.values.reshape((704, 1024))
+                img = np.clip(img, 0, np.inf)
+
+            elif filename.endswith('.tif'):
+                img = Image.open(os.path.join(main_directory, subdir, filename))
+                img = np.array(img)
+                img = (img / 65535) * 255
+                img = img.astype(np.uint8)
+                img = np.array(img)
+
+            image_channels.append(img)
+        train_image = np.dstack(image_channels)
+
+        # Append the 4-channel image to the list of all images
+        all_images.append(train_image)
+
+train_images = np.array(all_images)
+
+# Now, all_images is a 4D array with shape (i, 704, 1024, 4)
+
+#%%
+
+import os
+import numpy as np
+from PIL import Image
+
+# Define the directories where images are stored
+main_directories = [r"C:\Users\LabMan\Desktop\EDS masks\C40", r"C:\Users\LabMan\Desktop\EDS masks\A126"]
+
+all_images = []
+
+# Loop over the main directories
+for main_directory in main_directories:
+    files = os.listdir(main_directory)
+    files.sort()
+
+    # Loop over the files
+    for filename in files:
+        # Check if the file is a TIF file
+        if filename.endswith('.tif'):
+            img = Image.open(os.path.join(main_directory, filename))
+            img = img.convert('L')
+            img = np.array(img)
+            all_images.append(img)
+
+train_masks = np.array(all_images)
+
+# train_masks is a 3D array with shape (i, 704, 1024)
+
+
+#%%
+
+# Calculate the class weights
+from sklearn.utils import class_weight
+train_masks_flat = train_masks.flatten()
+
+# Calculate class weights
+class_weights = class_weight.compute_class_weight('balanced',
+                                                 classes = np.unique(train_masks_flat),
+                                                 y = train_masks_flat)
+class_weights = dict(enumerate(class_weights))
+class_weights = class_weight.compute_class_weight('balanced',
+                                                 classes=np.unique(train_masks_flat),
+                                                 y=train_masks_flat)
+
+# Map class weights to sample weights
+sample_weights = np.copy(train_masks_flat).astype(float)
+for class_idx, class_weight in enumerate(class_weights):
+    sample_weights[train_masks_flat == class_idx] = class_weight
+
+
+#%%
+import tensorflow as tf
+
+#Train the AI
+
+cp_callback = tf.keras.callbacks.ModelCheckpoint(
+    filepath=r"C:\Users\LabMan\Desktop\EDS AI\training_checkpoint\checkpoint_{epoch}.ckpt",
+    verbose=1, 
+    save_weights_only=True,
+    monitor='val_mean_io_u_1',
+    mode='max',
+    save_best_only=True)
+
+callbacks =[
+    tf.keras.callbacks.EarlyStopping(patience = 1450, monitor='mean_io_u_1'),
+    tf.keras.callbacks.TensorBoard(log_dir='logs'),
+    cp_callback]
+
+results = model.fit(train_images, 
+                    train_masks, 
+                    validation_split=0.2, 
+                    batch_size = 1, 
+                    epochs = 1500, 
+                    callbacks=callbacks,
+                    sample_weight=sample_weights)
+
+
+
+#%%
+
+# Save the model
+model.save(r'C:\Users\LabMan\Desktop\EDS AI\model.h5')
+
+# Save the weights
+model.save_weights(r'C:\Users\LabMan\Desktop\EDS AI\model_weights.h5')
+
+#%%
+
+# Load the model
+
+from keras.models import load_model
+
+# Load the model (unhashtag to load a previous model)
+# model = load_model(r'C:\Users\LabMan\Desktop\EDS AI\model.h5')
+
+
+#%%
+
+import matplotlib.pyplot as plt
+import numpy as np
+from keras.preprocessing import image
+
+img = train_images[0]
+
+
+# If you want to use a checkpoint.
+# model.load_weights(r'C:\Users\LabMan\Desktop\EDS AI\training_checkpoint\checkpoint_1.ckpt')
+
+
+
+# Predict the mask
+preds = model.predict(np.expand_dims(img, axis=0))
+
+# The model returns a 4D tensor but we want to display a 2D image,
+# so we extract the first 2D matrix from the tensor
+pred_mask = preds[0, :, :, 0]
+
+# Plot the first channel of the original image and the predicted mask
+fig, ax = plt.subplots(1, 2)
+
+# Extract the second channel of the image (0 = first channel, 1 = second channel etc)
+first_channel_img = img[:, :, 1]
+
+ax[0].imshow(first_channel_img, cmap='gray')
+ax[0].title.set_text('First Channel of Original Image')
+ax[1].imshow(pred_mask, cmap='gray')
+ax[1].title.set_text('Predicted Mask')
+plt.show()
+
+
+
+#%%
+# subdirs = ['EDS Fe L_alpha_1,2 Map', 'Electron Image SE', 'EDS Mg K_alpha_1,2 Map', 'EDS Si K_alpha_1 Map']
+# View the image to check if it fits the mask and such
+
+view_train_image = train_images[2]
+
+Fe_image = view_train_image[:,:,0]
+SE_image = view_train_image[:,:,1]
+Mg_image = view_train_image[:,:,2]
+Si_image = view_train_image[:,:,3]
+
+view_train_mask = train_masks[2]
+
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+
+# Create a figure
+fig, axs = plt.subplots(1, 5, figsize=(20, 4))
+
+# Plot each image
+axs[0].imshow(Fe_image, cmap='hot')
+axs[0].set_title('Fe Image')
+
+axs[1].imshow(SE_image, cmap='hot')
+axs[1].set_title('SE Image')
+
+axs[2].imshow(Mg_image, cmap='hot')
+axs[2].set_title('Mg Image')
+
+axs[3].imshow(Si_image, cmap='hot')
+axs[3].set_title('Si Image')
+
+axs[4].imshow(view_train_mask, cmap='hot')
+axs[4].set_title('Train Mask')
+
+# Remove the x and y ticks
+for ax in axs:
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+# Link the x and y limits of all subplots
+axs[0].get_shared_x_axes().join(*axs)
+axs[0].get_shared_y_axes().join(*axs)
+
+# Display the plot
+plt.show()
