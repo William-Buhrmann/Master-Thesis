@@ -1,0 +1,326 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+from keras.models import model_from_json
+
+# Load the JSON string from the file
+model_path = r'C:\Users\LabMan\Desktop\test 15\TrainedModel.json'
+with open(r'C:\Users\LabMan\Desktop\test 15\TrainedModel.json', 'r') as f:
+    json_string = f.read()
+
+# Load the Keras model from the JSON string
+model = model_from_json(json_string)
+model.summary()
+
+#%%
+
+# Load the weights of the model
+weights_path = r'C:\Users\LabMan\Desktop\test 15\TrainedModel.hdf5'
+model.load_weights(weights_path)
+
+#%%
+
+import os
+import pandas as pd
+import numpy as np
+from PIL import Image
+
+# Define the directories where subdirectories are stored
+main_directories = [r"C:\Users\LabMan\Desktop\test"]
+
+# Subdirectories
+subdirs = ['Images']
+
+all_images = []
+
+# Loop over the main directories
+for main_directory in main_directories:
+    num_files = len(os.listdir(os.path.join(main_directory, subdirs[0])))
+    for i in range(num_files):
+        image_channels = []
+        for subdir in subdirs:
+            files = os.listdir(os.path.join(main_directory, subdir))
+            files.sort()
+            filename = files[i]
+
+            # Check if the file is a CSV or a TIF file
+            if filename.endswith('.csv'):
+                data = pd.read_csv(os.path.join(main_directory, subdir, filename), header=None)
+                data = data.dropna(axis=1)
+                
+                #Change if the dimensions of the EDS map is different
+                img = data.values.reshape((704, 1024))
+                img = np.clip(img, 0, np.inf)
+
+            elif filename.endswith('.tif'):
+                img = Image.open(os.path.join(main_directory, subdir, filename))
+                img = np.array(img)
+                img = (img / 65535) * 255
+                img = img.astype(np.uint8)
+                img = np.array(img)
+            image_channels.append(img)
+
+        train_image = np.dstack(image_channels)
+        all_images.append(train_image)
+
+# Convert the list of all images to a numpy array
+train_images = np.array(all_images)
+
+# Now, all_images is a 4D array with shape (i, 704, 1024, 4)
+
+
+#%%
+
+import numpy as np
+
+# These functions may be customized to specific needs, such as accommodating to
+# the expectations of Neural Networks trained outside our environment
+def get_model_information():
+    """Model information for end user
+
+    Returns
+    -------
+        str Information message that will appear in the Deep-Learning
+        models information port.
+    """
+
+    model_information = "<html>This network is a <a href=\"https://arxiv.org/abs/1505.04597\"> \
+            U-Net model variant.</a></html>"
+    return model_information
+
+
+# This function pre-processes the data by standardizing it to zero mean and unit variance.
+def preprocess_input(x):
+    """Standardization of the input array x, prior to the actual prediction by the Deep Learning Prediction module.
+    This standardization must be the same as that which was applied during the Training of the model.
+
+
+    Parameters
+    ----------
+        x: Array to pre-process.
+            Numpy array of shape (depth, width, height, channels)
+
+    Returns
+    -------
+        processed array.
+            Expected shape: (depth, width, height, channels)
+    """
+    if len(x.shape) != 4:
+        raise ValueError("incorrect 'x' shape, must be a 4d array with shape=(depth, width, height, channels)")
+
+    n, _, _, _ = x.shape
+
+    if isinstance(x, np.ndarray):
+        x_tmp = np.reshape(x, [x.shape[0], np.product(x.shape[1:])])
+        x_mean = np.mean(x_tmp, dtype=np.float32, axis=1).reshape((n, 1, 1, 1))
+        x_std = np.std(x_tmp, dtype=np.float32, axis=1).reshape((n, 1, 1, 1))
+        return (x-x_mean)/np.maximum(x_std, 1e-7)
+    else:
+        raise TypeError("'x' must be a numpy array")
+
+
+# This function assumes that the model generates a probability score for each class.
+# It returns the index of the image (label) with the highest probability.
+# It is applied on the tiles of the input data, and thus avoid the allocation
+# of the N scalar arrays representing the probability of each class.
+def postprocess_local_output(predicted_tile):
+    """This function performs a local post-processing of the prediction output,
+    operating on each tile generated when the input data is large.
+    It is intended for pixel-wise operations, which do not require a global context.
+
+    Parameters
+    ----------
+        predicted_tile: tile of the model prediction output
+            Numpy array of shape (tile_depth, tile_width, tile_height, input_channels)
+
+    Returns
+    -------
+        post-processed tile
+            Expected shape: (tile_depth, tile_width, tile_height, output_channels)
+    """
+    if len(predicted_tile.shape) != 4:
+        raise ValueError("incorrect 'y_pred' shape, must be a 4d array with shape=(depth, width, height, channels)")
+
+    _, _, _, channels = predicted_tile.shape
+
+    if channels == 1:
+        local_output = predicted_tile > 0.5
+    else:
+        local_output = np.expand_dims(np.argmax(predicted_tile,axis=3),axis=3)
+
+    return local_output
+
+
+# This function casts the predicted_array elements (float32 array) to an 8-bits unsigned integer
+# when handling labels. The resulting image is therefore of this type.
+def postprocess_global_output(list_predicted_arrays, input_array):
+    """This function performs a global post-processing of the prediction output,
+    after the tiles have been re-assembled. It is intended to be used for global
+    normalization operations.
+
+
+    Parameters
+    ----------
+        list_predicted_arrays: list of model prediction output(s), each item of the list is a channel.
+            List of numpy arrays, each with shape (depth, width, height, 1)
+
+        input_array: input data array.
+            Numpy array of shape (depth, input_width, input_height, channels)
+
+    Returns
+    -------
+        A list of the processed arrays, each will be exposed as a 3D Data object in the application.
+            Expected shape is a list of arrays, each with shape (depth, output_width, output_height, 1)
+    """
+    return [list_predicted_arrays[i].astype(np.uint8) for i in np.arange(len(list_predicted_arrays))]
+
+
+# This implementation makes the Prediction return a label field dataset,
+# rather than a grayscale image.
+def postprocess_output_type():
+    """This function allows specifying the output object type of the Deep Learning Prediction module.
+
+    Returns
+    -------
+        List of strings describing the object type for the corresponding data exposed in the application.
+            The string should be either HxUniformLabelField3, or HxUniformScalarField3.
+    """
+    return ['HxUniformLabelField3']
+
+
+
+
+
+#%%
+
+import matplotlib.pyplot as plt
+import numpy as np
+from keras.preprocessing import image
+from skimage.measure import label
+from skimage.color import label2rgb
+img = train_images
+
+pre_img = preprocess_input(img)
+
+preds = model.predict(pre_img)
+
+post_pred_local = postprocess_local_output(preds)
+
+post_pred_global = postprocess_global_output(post_pred_local, img)
+
+postprocess_output_type()
+
+#%%
+
+# Plot the image with the predicted mask
+
+labeled = label(post_pred_local[0,:,:,0])
+rgb_img = label2rgb(labeled,image=pre_img[0,:,:,0],colors=['green'],alpha=0.8,saturation=0.9)
+
+plt.figure()
+plt.imshow(rgb_img)
+
+print(post_pred_global[0].shape)
+
+
+#%%
+" testing playground"
+
+from PIL import Image
+import numpy as np
+
+# Open the image file
+img = Image.open(r'C:\Users\LabMan\Desktop\test\Asbestos\Electron Image SE_076.tif')
+
+
+
+# Convert the image data to a numpy array
+img_array = np.array(img)
+
+
+import pandas as pd
+import numpy as np
+
+def csv_to_2darray(file_path):
+    # Load the CSV file
+    data = pd.read_csv((file_path), header=None)
+
+    # Drop columns that contain any NaN values
+    data = data.dropna(axis=1)
+
+    # Convert the data to a numpy array and reshape it into an image
+    data = data.values.reshape((704, 1024))
+    
+    return data
+
+
+
+#%%
+
+"Getting the coordinates for the binary image"
+
+import numpy as np
+
+image_2d = post_pred_local[0,:,:,0]
+
+# Get the indices where fibers are 1
+indices = np.where(image_2d == 1)
+
+# Converting these indices to a list of (x, y) coordinates:
+coordinates = list(zip(indices[0], indices[1]))
+
+# Plot the SE image with the predicted mask
+labeled = label(image_2d)
+rgb_img = label2rgb(labeled,image=pre_img[0,:,:,0],colors=['green'],alpha=0.8,saturation=0.9)
+
+plt.figure()
+plt.imshow(rgb_img)
+
+
+#%%
+
+"Getting the elemental composition of the image. Normal map"
+
+elemental_Si_image = csv_to_2darray(r'C:\Users\LabMan\Desktop\EDS elements\C40\EDS Si K_alpha_1 Map\EDS Si K_alpha_1 Map_076.csv')
+elemental_Si_value = [elemental_Si_image[x][y] for (x, y) in coordinates]
+
+elemental_Fe_image = csv_to_2darray(r'C:\Users\LabMan\Desktop\EDS elements\C40\EDS Fe L_alpha_1,2 Map\EDS Fe L_alpha_1,2 Map_076.csv')
+elemental_Fe_value = [elemental_Si_image[x][y] for (x, y) in coordinates]
+
+elemental_Mg_image = csv_to_2darray(r'C:\Users\LabMan\Desktop\EDS elements\C40\EDS Mg K_alpha_1,2 Map\EDS Mg K_alpha_1,2 Map_076.csv')
+elemental_Mg_value = [elemental_Si_image[x][y] for (x, y) in coordinates]
+
+#%%
+
+"Getting the elemental composition of the image. TruMap"
+
+elemental_Si_image = csv_to_2darray(r'C:\Users\LabMan\Desktop\test\Elements\Si K series.csv')
+elemental_Si_value = [elemental_Si_image[x][y] for (x, y) in coordinates]
+
+elemental_Fe_image = csv_to_2darray(r'C:\Users\LabMan\Desktop\test\Elements\Fe L series.csv')
+elemental_Fe_value = [elemental_Si_image[x][y] for (x, y) in coordinates]
+
+elemental_Mg_image = csv_to_2darray(r'C:\Users\LabMan\Desktop\test\Elements\Mg K series.csv')
+elemental_Mg_value = [elemental_Si_image[x][y] for (x, y) in coordinates]
+
+#%%
+
+array = np.zeros((704, 1024))
+
+#Check the elemental map
+for i in range(len(coordinates)):
+    x, y = coordinates[i]
+    array[x][y] = elemental_Si_value[i]>3  # for Si values
+    array[x][y] = elemental_Fe_value[i]>1  # for Fe values
+    array[x][y] = elemental_Mg_value[i]>1  # for Mg values
+
+# fibers and elemental map overlay
+plt.figure()
+plt.imshow(array)
+
+
+labeled = label(array)
+rgb_img = label2rgb(labeled,image=pre_img[0,:,:,0],colors=['green'],alpha=0.8,saturation=0.9)
+
+plt.figure()
+plt.imshow(rgb_img)
